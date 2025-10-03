@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FLEX-FORM User Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
             margin: 0;
@@ -352,6 +353,15 @@
             border-radius: 10px;
             margin-bottom: 20px;
             border-left: 4px solid #e53e3e;
+        }
+
+        .warning-message {
+            background: #faf089;
+            color: #d69e2e;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ecc94b;
         }
 
         @media (max-width: 768px) {
@@ -736,7 +746,7 @@
         }
 
         // Submit form
-        document.getElementById('dynamicForm').addEventListener('submit', function(e) {
+        document.getElementById('dynamicForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             if (!currentFormId) return;
@@ -749,10 +759,43 @@
             data.submitted_at = new Date().toISOString();
             data.form_name = formTemplates[currentFormId].name;
 
-            // Save to localStorage (in real app, send to database)
-            const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
-            submissions.push(data);
-            localStorage.setItem('flexform_submissions', JSON.stringify(submissions));
+            try {
+                // Try to save to database first
+                if (isConnectedToDatabase && supabaseClient) {
+                    console.log('💾 Saving to database...');
+                    
+                    // Create a record for form_submissions table
+                    const dbRecord = {
+                        form_type: data.form_type,
+                        form_name: data.form_name,
+                        form_data: JSON.stringify(data),
+                        submitted_at: data.submitted_at,
+                        user_email: data.email || 'anonymous@user.com'
+                    };
+
+                    const { error } = await supabaseClient
+                        .from('form_submissions')
+                        .insert([dbRecord]);
+
+                    if (error) {
+                        console.error('Database save failed:', error);
+                        // Fall back to localStorage
+                        saveToLocalStorage(data);
+                        showMessage('Saved locally (database error: ' + error.message + ')', 'warning');
+                    } else {
+                        console.log('✅ Saved to database successfully');
+                        showMessage('Form submitted to database successfully!', 'success');
+                    }
+                } else {
+                    // Save to localStorage when no database connection
+                    saveToLocalStorage(data);
+                    showMessage('Form saved locally (no database connection)', 'success');
+                }
+            } catch (error) {
+                console.error('Submission error:', error);
+                saveToLocalStorage(data);
+                showMessage('Saved locally (error: ' + error.message + ')', 'warning');
+            }
 
             // Update dashboard stats
             updateDashboardStats();
@@ -760,17 +803,29 @@
             // Clear draft
             localStorage.removeItem(`flexform_draft_${currentFormId}`);
 
-            // Show success and return to selection
-            showMessage('Form submitted successfully!', 'success');
+            // Return to selection
             setTimeout(() => {
                 backToFormSelection();
             }, 2000);
         });
 
+        // Helper function to save to localStorage
+        function saveToLocalStorage(data) {
+            const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
+            submissions.push(data);
+            localStorage.setItem('flexform_submissions', JSON.stringify(submissions));
+        }
+
         // Show message
         function showMessage(message, type = 'success') {
             const messageDiv = document.createElement('div');
-            messageDiv.className = type === 'success' ? 'success-message' : 'error-message';
+            if (type === 'success') {
+                messageDiv.className = 'success-message';
+            } else if (type === 'warning') {
+                messageDiv.className = 'warning-message';
+            } else {
+                messageDiv.className = 'error-message';
+            }
             messageDiv.textContent = message;
             
             const formContainer = document.querySelector('.form-container');
@@ -794,14 +849,43 @@
             document.getElementById('thisMonth').textContent = thisMonth.length;
         }
 
+        // Database connection variables
+        let supabaseClient = null;
+        let isConnectedToDatabase = false;
+
+        // Initialize database connection
+        function initializeDatabase() {
+            // Try to get connection from config or localStorage
+            const supabaseUrl = 'https://rctzljfqsafjmbljeyrb.supabase.co'; // Your Supabase URL
+            
+            // For browser use, you need the ANON key, not service_role key
+            // You should replace this with your actual anon/public key from Supabase Dashboard > Settings > API
+            const supabaseAnonKey = 'your-anon-key-here'; // Replace with your anon key
+            
+            if (supabaseUrl && supabaseAnonKey && supabaseAnonKey !== 'your-anon-key-here') {
+                try {
+                    supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+                    isConnectedToDatabase = true;
+                    console.log('✅ Connected to Supabase database');
+                    document.getElementById('connectionStatus').innerHTML = 
+                        '<span style="color: #38a169;">●</span> Connected to database';
+                } catch (error) {
+                    console.error('❌ Database connection failed:', error);
+                    document.getElementById('connectionStatus').innerHTML = 
+                        '<span style="color: #e53e3e;">●</span> Database connection failed - using local storage';
+                }
+            } else {
+                console.log('⚠️ No database credentials - using localStorage');
+                document.getElementById('connectionStatus').innerHTML = 
+                    '<span style="color: #d69e2e;">●</span> Using local storage (add database credentials to sync)';
+            }
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 User Portal loaded successfully');
+            initializeDatabase();
             updateDashboardStats();
-            
-            // Update connection status
-            document.getElementById('connectionStatus').innerHTML = 
-                '<span style="color: #38a169;">●</span> Ready to submit forms';
         });
     </script>
 </body>
