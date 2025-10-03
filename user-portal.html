@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FLEX-FORM User Portal</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
@@ -111,6 +112,7 @@
             border-radius: 15px;
             text-align: center;
             box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            position: relative;
         }
 
         .stat-card h3 {
@@ -120,6 +122,20 @@
 
         .stat-card p {
             opacity: 0.9;
+        }
+
+        .clickable-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .clickable-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+        }
+
+        .clickable-card:active {
+            transform: translateY(-2px);
         }
 
         .forms-grid {
@@ -424,17 +440,20 @@
                 <h2 style="margin-bottom: 25px; color: #2d3748;">📊 Dashboard Overview</h2>
                 
                 <div class="dashboard-grid">
-                    <div class="stat-card">
+                    <div class="stat-card clickable-card" onclick="showDataModal('forms')" title="Click to view available forms">
                         <h3>2</h3>
                         <p>Available Forms</p>
+                        <i class="fas fa-chart-line" style="position: absolute; top: 15px; right: 15px; opacity: 0.3;"></i>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card clickable-card" onclick="showDataModal('total')" title="Click to view all submissions">
                         <h3 id="totalSubmissions">0</h3>
                         <p>Total Submissions</p>
+                        <i class="fas fa-database" style="position: absolute; top: 15px; right: 15px; opacity: 0.3;"></i>
                     </div>
-                    <div class="stat-card">
+                    <div class="stat-card clickable-card" onclick="showDataModal('month')" title="Click to view this month's submissions">
                         <h3 id="thisMonth">0</h3>
                         <p>This Month</p>
+                        <i class="fas fa-calendar-alt" style="position: absolute; top: 15px; right: 15px; opacity: 0.3;"></i>
                     </div>
                 </div>
 
@@ -887,6 +906,395 @@
             initializeDatabase();
             updateDashboardStats();
         });
+
+        // Modal functions for data visualization
+        function showDataModal(type) {
+            const modal = document.getElementById('dataModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalTable = document.getElementById('modalTable');
+            const exportBtn = document.getElementById('exportTableData');
+            
+            // Get data based on type
+            let data = [];
+            let title = '';
+            
+            const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
+            
+            switch(type) {
+                case 'forms':
+                    title = 'Available Forms';
+                    data = [
+                        { name: 'Contact Form', description: 'Basic contact information form', status: 'Active', created: '2025-10-01' },
+                        { name: 'Gemba Request Form', description: 'Submit requests for Gemba walks and observations', status: 'Active', created: '2025-10-01' }
+                    ];
+                    break;
+                case 'total':
+                    title = 'All Submissions';
+                    data = submissions.map(sub => {
+                        // Create a copy with all original fields plus formatted dates
+                        const fullData = { ...sub };
+                        
+                        // Add formatted date/time fields
+                        if (sub.submitted_at) {
+                            fullData.submitted_date = new Date(sub.submitted_at).toLocaleDateString();
+                            fullData.submitted_time = new Date(sub.submitted_at).toLocaleTimeString();
+                        }
+                        
+                        // Remove the original ISO timestamp for cleaner display
+                        delete fullData.submitted_at;
+                        
+                        return fullData;
+                    });
+                    break;
+                case 'month':
+                    title = 'This Month\'s Submissions';
+                    const thisMonth = submissions.filter(sub => {
+                        const date = new Date(sub.submitted_at);
+                        const now = new Date();
+                        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                    });
+                    data = thisMonth.map(sub => {
+                        // Create a copy with all original fields plus formatted dates
+                        const fullData = { ...sub };
+                        
+                        // Add formatted date/time fields
+                        if (sub.submitted_at) {
+                            fullData.submitted_date = new Date(sub.submitted_at).toLocaleDateString();
+                            fullData.submitted_time = new Date(sub.submitted_at).toLocaleTimeString();
+                        }
+                        
+                        // Remove the original ISO timestamp for cleaner display
+                        delete fullData.submitted_at;
+                        
+                        return fullData;
+                    });
+                    break;
+            }
+            
+            modalTitle.textContent = title;
+            
+            // Create table
+            createDataTable(modalTable, data, type);
+            
+            // Show modal
+            modal.style.display = 'flex';
+            
+            // Set up export functionality
+            exportBtn.onclick = () => exportTableToExcel(data, title);
+        }
+
+        function createDataTable(container, data, type) {
+            container.innerHTML = '';
+            
+            if (data.length === 0) {
+                container.innerHTML = '<div class="no-data">No data available</div>';
+                return;
+            }
+            
+            // Create table
+            const table = document.createElement('table');
+            table.className = 'data-table';
+            
+            // Create header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            
+            const headers = Object.keys(data[0]);
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                // Better header formatting
+                let headerText = header.replace(/_/g, ' ');
+                headerText = headerText.replace(/\b\w/g, l => l.toUpperCase());
+                th.textContent = headerText;
+                th.title = 'Click to sort by ' + headerText;
+                th.addEventListener('click', () => sortTable(table, headers.indexOf(header)));
+                
+                // Add sorting indicator
+                const sortIcon = document.createElement('i');
+                sortIcon.className = 'fas fa-sort sort-icon';
+                sortIcon.style.marginLeft = '5px';
+                sortIcon.style.opacity = '0.3';
+                th.appendChild(sortIcon);
+                
+                headerRow.appendChild(th);
+            });
+            
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+            
+            // Create body
+            const tbody = document.createElement('tbody');
+            data.forEach((row, index) => {
+                const tr = document.createElement('tr');
+                tr.className = index % 2 === 0 ? 'even' : 'odd';
+                
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.textContent = row[header] || '-';
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+            
+            table.appendChild(tbody);
+            container.appendChild(table);
+        }
+
+        function sortTable(table, columnIndex) {
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            rows.sort((a, b) => {
+                const aText = a.cells[columnIndex].textContent.trim();
+                const bText = b.cells[columnIndex].textContent.trim();
+                
+                // Check if it's a number
+                if (!isNaN(aText) && !isNaN(bText)) {
+                    return parseFloat(aText) - parseFloat(bText);
+                }
+                
+                // Check if it's a date
+                const aDate = Date.parse(aText);
+                const bDate = Date.parse(bText);
+                if (!isNaN(aDate) && !isNaN(bDate)) {
+                    return aDate - bDate;
+                }
+                
+                // String comparison
+                return aText.localeCompare(bText);
+            });
+            
+            // Clear and re-append sorted rows
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        function exportTableToExcel(data, filename) {
+            if (data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            // Convert data to CSV
+            const headers = Object.keys(data[0]);
+            const csvContent = [
+                headers.join(','),
+                ...data.map(row => 
+                    headers.map(header => 
+                        '"' + (row[header] || '').toString().replace(/"/g, '""') + '"'
+                    ).join(',')
+                )
+            ].join('\n');
+            
+            // Create download link
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename.replace(/\s+/g, '_') + '_' + new Date().toISOString().split('T')[0] + '.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function closeDataModal() {
+            document.getElementById('dataModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside
+        window.addEventListener('click', function(e) {
+            const modal = document.getElementById('dataModal');
+            if (e.target === modal) {
+                closeDataModal();
+            }
+        });
     </script>
+
+    <!-- Data Modal -->
+    <div id="dataModal" class="modal-overlay">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="modalTitle">Data View</h2>
+                <div class="modal-actions">
+                    <button id="exportTableData" class="btn-export">
+                        <i class="fas fa-download"></i> Export CSV
+                    </button>
+                    <button onclick="closeDataModal()" class="btn-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="modalTable" class="table-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .modal-container {
+            background: white;
+            border-radius: 15px;
+            max-width: 95vw;
+            max-height: 90vh;
+            width: 1200px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-export, .btn-close {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-export {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn-export:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-close {
+            background: rgba(255, 100, 100, 0.8);
+            color: white;
+        }
+
+        .btn-close:hover {
+            background: rgba(255, 100, 100, 1);
+        }
+
+        .modal-body {
+            padding: 0;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .table-container {
+            overflow: auto;
+            max-height: 60vh;
+            padding: 20px;
+            width: 100%;
+        }
+
+        .data-table {
+            width: max-content;
+            min-width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            background: white;
+            white-space: nowrap;
+        }
+
+        .data-table th {
+            background: #f8fafc;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #2d3748;
+            border-bottom: 2px solid #e2e8f0;
+            cursor: pointer;
+            user-select: none;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            min-width: 120px;
+            white-space: nowrap;
+        }
+
+        .data-table th:hover {
+            background: #edf2f7;
+        }
+
+        .data-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #4a5568;
+            max-width: 200px;
+            word-wrap: break-word;
+            white-space: normal;
+        }
+
+        .sort-icon {
+            transition: all 0.3s ease;
+        }
+
+        .data-table th:hover .sort-icon {
+            opacity: 1 !important;
+        }
+
+        .data-table tr.even {
+            background: #f8fafc;
+        }
+
+        .data-table tr:hover {
+            background: #edf2f7;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #718096;
+            font-size: 1.1rem;
+        }
+
+        @media (max-width: 768px) {
+            .modal-container {
+                width: 95vw;
+                height: 90vh;
+            }
+            
+            .data-table {
+                font-size: 0.8rem;
+            }
+            
+            .data-table th,
+            .data-table td {
+                padding: 8px 10px;
+            }
+        }
+    </style>
 </body>
 </html>
