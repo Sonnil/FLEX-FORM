@@ -857,15 +857,27 @@
 
         // Update dashboard stats
         function updateDashboardStats() {
-            const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
-            const thisMonth = submissions.filter(sub => {
-                const date = new Date(sub.submitted_at);
-                const now = new Date();
-                return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-            });
+            try {
+                console.log('Updating dashboard stats...');
+                const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
+                console.log('Found submissions:', submissions.length);
+                
+                const thisMonth = submissions.filter(sub => {
+                    const date = new Date(sub.submitted_at);
+                    const now = new Date();
+                    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                });
 
-            document.getElementById('totalSubmissions').textContent = submissions.length;
-            document.getElementById('thisMonth').textContent = thisMonth.length;
+                const totalElement = document.getElementById('totalSubmissions');
+                const monthElement = document.getElementById('thisMonth');
+                
+                if (totalElement) totalElement.textContent = submissions.length;
+                if (monthElement) monthElement.textContent = thisMonth.length;
+                
+                console.log('Dashboard updated - Total:', submissions.length, 'This month:', thisMonth.length);
+            } catch (error) {
+                console.error('Error updating dashboard stats:', error);
+            }
         }
 
         // Database connection variables
@@ -903,22 +915,39 @@
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 User Portal loaded successfully');
-            initializeDatabase();
-            updateDashboardStats();
+            console.log('Current URL:', window.location.href);
+            console.log('User Agent:', navigator.userAgent);
+            
+            try {
+                initializeDatabase();
+                updateDashboardStats();
+                console.log('✅ Initialization complete');
+            } catch (error) {
+                console.error('❌ Initialization error:', error);
+            }
         });
 
         // Modal functions for data visualization
         function showDataModal(type) {
-            const modal = document.getElementById('dataModal');
-            const modalTitle = document.getElementById('modalTitle');
-            const modalTable = document.getElementById('modalTable');
-            const exportBtn = document.getElementById('exportTableData');
-            
-            // Get data based on type
-            let data = [];
-            let title = '';
-            
-            const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
+            try {
+                console.log('Opening modal for type:', type);
+                
+                const modal = document.getElementById('dataModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalTable = document.getElementById('modalTable');
+                const exportBtn = document.getElementById('exportTableData');
+                
+                if (!modal || !modalTitle || !modalTable || !exportBtn) {
+                    console.error('Modal elements not found');
+                    return;
+                }
+                
+                // Get data based on type
+                let data = [];
+                let title = '';
+                
+                const submissions = JSON.parse(localStorage.getItem('flexform_submissions') || '[]');
+                console.log('Found submissions:', submissions.length);
             
             switch(type) {
                 case 'forms':
@@ -981,6 +1010,11 @@
             
             // Set up export functionality
             exportBtn.onclick = () => exportTableToExcel(data, title);
+            
+            } catch (error) {
+                console.error('Error opening modal:', error);
+                alert('Error opening data view: ' + error.message);
+            }
         }
 
         function createDataTable(container, data, type) {
